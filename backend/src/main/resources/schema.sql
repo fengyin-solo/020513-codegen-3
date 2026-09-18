@@ -210,10 +210,27 @@ CREATE TABLE IF NOT EXISTS order_info (
     quantity INT DEFAULT 1,
     check_in_date DATE,
     check_out_date DATE,
+    reschedule_count INT DEFAULT 0 COMMENT '改期次数（酒店订单）',
+    version INT DEFAULT 0 COMMENT '乐观锁版本号',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user (user_id),
     INDEX idx_order_no (order_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 订单状态变更日志：每一步状态变更的变更时间与触发人
+CREATE TABLE IF NOT EXISTS order_status_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT NOT NULL,
+    action VARCHAR(20) NOT NULL COMMENT 'CREATE/CONFIRM/RESCHEDULE/CHECKIN/FINISH/CANCEL',
+    from_status VARCHAR(20),
+    to_status VARCHAR(20),
+    operator_type VARCHAR(10) NOT NULL COMMENT 'USER/ADMIN/STAFF/SYSTEM',
+    operator_id BIGINT,
+    operator_name VARCHAR(50),
+    detail VARCHAR(500) COMMENT '变更说明（如改期前后日期与金额）',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_order_id (order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS message (

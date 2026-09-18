@@ -517,12 +517,29 @@ public class AdminController {
         return Result.success(orderService.listAllOrders(page, size, orderType, status));
     }
 
-    @GetMapping("/order/cancel")
-    public Result<String> adminCancelOrder(@RequestParam Long orderId) {
-        OrderInfo order = orderService.getById(orderId);
+    /** 后台订单详情：订单信息 + 状态变更日志（含变更时间与触发人） */
+    @GetMapping("/order/detail")
+    public Result<Map<String, Object>> adminOrderDetail(@RequestParam Long id) {
+        OrderInfo order = orderService.getById(id);
         if (order == null) return Result.error("订单不存在");
-        order.setStatus("CANCELLED");
-        orderService.updateById(order);
+        Map<String, Object> data = new HashMap<>();
+        data.put("order", order);
+        data.put("logs", orderService.listOrderLogs(id));
+        return Result.success(data);
+    }
+
+    /** 酒店确认订单：待确认 -> 已确认 */
+    @GetMapping("/order/confirm")
+    public Result<String> adminConfirmOrder(@RequestParam Long orderId, HttpSession session) {
+        User operator = (User) session.getAttribute(Constants.SESSION_USER);
+        orderService.confirmOrder(orderId, operator);
+        return Result.success("已确认", null);
+    }
+
+    @GetMapping("/order/cancel")
+    public Result<String> adminCancelOrder(@RequestParam Long orderId, HttpSession session) {
+        User operator = (User) session.getAttribute(Constants.SESSION_USER);
+        orderService.adminCancelOrder(orderId, operator);
         return Result.success("已取消");
     }
 

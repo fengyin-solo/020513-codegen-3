@@ -25,6 +25,11 @@ public class OrderInfo implements Serializable {
     private Integer quantity;
     private Date checkInDate;
     private Date checkOutDate;
+    /** 改期次数（酒店订单） */
+    private Integer rescheduleCount;
+    /** 乐观锁版本号：并发改期时仅最早的一次提交成功 */
+    @Version
+    private Integer version;
     @TableField(fill = FieldFill.INSERT)
     private Date createTime;
     @TableField(fill = FieldFill.INSERT_UPDATE)
