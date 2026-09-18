@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:redtourism;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=30000
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-test.sql
+      data-locations: classpath:empty.txt
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: ""
+  configuration:
+    map-underscore-to-camel-case: true
+
+upload:
+  path: ./build/test-uploads/

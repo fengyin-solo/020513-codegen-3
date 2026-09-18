@@ -517,30 +517,53 @@ public class AdminController {
         return Result.success(orderService.listAllOrders(page, size, orderType, status));
     }
 
-    @GetMapping("/order/cancel")
-    public Result<String> adminCancelOrder(@RequestParam Long orderId) {
-        OrderInfo order = orderService.getById(orderId);
+    /** 后台订单详情：先按入住/离店日惰性推进，再返回最新订单。 */
+    @GetMapping("/order/detail")
+    public Result<OrderInfo> orderDetail(@RequestParam Long id) {
+        orderService.lazyTransition(id);
+        OrderInfo order = orderService.getById(id);
         if (order == null) return Result.error("订单不存在");
-        order.setStatus("CANCELLED");
-        orderService.updateById(order);
+        return Result.success(order);
+    }
+
+    /** 订单状态流转记录（变更时间 + 触发人，供后台订单详情页展示）。 */
+    @GetMapping("/order/statusLogs")
+    public Result<List<com.redtourism.entity.OrderStatusLog>> orderStatusLogs(@RequestParam Long orderId,
+                                                                              HttpSession session) {
+        User admin = (User) session.getAttribute(Constants.SESSION_USER);
+        return Result.success(orderService.listStatusLogs(orderId, admin, true));
+    }
+
+    /** 酒店确认：待确认 -> 已确认，触发人记录为当前后台操作人。 */
+    @GetMapping("/order/confirm")
+    public Result<String> adminConfirmHotelOrder(@RequestParam Long orderId, HttpSession session) {
+        User admin = (User) session.getAttribute(Constants.SESSION_USER);
+        if (admin == null) return Result.error(401, "请先登录");
+        orderService.confirmHotelOrder(orderId, admin);
+        return Result.success("已确认", null);
+    }
+
+    @GetMapping("/order/cancel")
+    public Result<String> adminCancelOrder(@RequestParam Long orderId, HttpSession session) {
+        User admin = (User) session.getAttribute(Constants.SESSION_USER);
+        if (admin == null) return Result.error(401, "请先登录");
+        orderService.adminCancel(orderId, admin);
         return Result.success("已取消");
     }
 
     @GetMapping("/order/refund")
-    public Result<String> adminRefundOrder(@RequestParam Long orderId) {
-        OrderInfo order = orderService.getById(orderId);
-        if (order == null) return Result.error("订单不存在");
-        order.setStatus("REFUNDED");
-        orderService.updateById(order);
+    public Result<String> adminRefundOrder(@RequestParam Long orderId, HttpSession session) {
+        User admin = (User) session.getAttribute(Constants.SESSION_USER);
+        if (admin == null) return Result.error(401, "请先登录");
+        orderService.adminRefund(orderId, admin);
         return Result.success("已退款");
     }
 
     @GetMapping("/order/complete")
-    public Result<String> adminCompleteOrder(@RequestParam Long orderId) {
-        OrderInfo order = orderService.getById(orderId);
-        if (order == null) return Result.error("订单不存在");
-        order.setStatus("COMPLETED");
-        orderService.updateById(order);
+    public Result<String> adminCompleteOrder(@RequestParam Long orderId, HttpSession session) {
+        User admin = (User) session.getAttribute(Constants.SESSION_USER);
+        if (admin == null) return Result.error(401, "请先登录");
+        orderService.adminComplete(orderId, admin);
         return Result.success("已完成");
     }
 

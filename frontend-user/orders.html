@@ -52,6 +52,10 @@
             <div class="tabs">
                 <div class="tab active" onclick="switchStatus('')">全部</div>
                 <div class="tab" onclick="switchStatus('PENDING')">待支付</div>
+                <div class="tab" onclick="switchStatus('PENDING_CONFIRM')">待确认</div>
+                <div class="tab" onclick="switchStatus('CONFIRMED')">已确认</div>
+                <div class="tab" onclick="switchStatus('CHECKED_IN')">入住中</div>
+                <div class="tab" onclick="switchStatus('FINISHED')">已结束</div>
                 <div class="tab" onclick="switchStatus('PAID')">已支付</div>
                 <div class="tab" onclick="switchStatus('CANCELLED')">已取消</div>
                 <div class="tab" onclick="switchStatus('REFUNDED')">已退款</div>
@@ -59,6 +63,46 @@
             <div id="orderList"></div>
             <div class="pagination" id="pagination"></div>
         </div>
+    </div>
+</div>
+
+<!-- 酒店订单改期弹窗 -->
+<div class="modal-overlay" id="rescheduleModal">
+    <div class="modal" style="position:relative;max-width:460px">
+        <span class="modal-close" onclick="closeRescheduleModal()">&times;</span>
+        <h3><i class="fas fa-calendar-alt" style="color:var(--red)"></i> 订单改期</h3>
+        <div id="rescheduleTip" style="background:#fff5f5;border:1px solid #ffd6d6;border-radius:var(--r);padding:10px 12px;font-size:13px;color:#C41A1A;margin:12px 0"></div>
+        <div class="form-group">
+            <label>原入住日期</label>
+            <input type="text" id="oldCheckIn" readonly style="background:#f7f7f7">
+        </div>
+        <div class="form-group">
+            <label>原离店日期</label>
+            <input type="text" id="oldCheckOut" readonly style="background:#f7f7f7">
+        </div>
+        <div class="form-group">
+            <label>新入住日期</label>
+            <input type="date" id="newCheckIn">
+        </div>
+        <div class="form-group">
+            <label>新离店日期</label>
+            <input type="date" id="newCheckOut">
+        </div>
+        <div class="form-group">
+            <label>改期后预估费用</label>
+            <div id="rescheduleCost" style="font-size:20px;color:var(--red);font-weight:700">¥0</div>
+            <div id="rescheduleCostHint" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="confirmReschedule()">确认改期</button>
+    </div>
+</div>
+
+<!-- 状态流转记录弹窗 -->
+<div class="modal-overlay" id="logModal">
+    <div class="modal" style="position:relative;max-width:560px">
+        <span class="modal-close" onclick="closeLogModal()">&times;</span>
+        <h3><i class="fas fa-history" style="color:var(--red)"></i> 状态流转记录</h3>
+        <div id="logTimeline" style="margin-top:18px;max-height:60vh;overflow-y:auto"></div>
     </div>
 </div>
 
@@ -131,6 +175,10 @@ function renderSidebar() {
 function getStatusBadge(status) {
     const map = {
         'PENDING': '<span class="status status-pending"><i class="fas fa-clock"></i> 待支付</span>',
+        'PENDING_CONFIRM': '<span class="status status-pending"><i class="fas fa-hourglass-half"></i> 待确认</span>',
+        'CONFIRMED': '<span class="status status-paid"><i class="fas fa-check-circle"></i> 已确认</span>',
+        'CHECKED_IN': '<span class="status" style="background:#e6f7ff;color:#1890ff"><i class="fas fa-bed"></i> 入住中</span>',
+        'FINISHED': '<span class="status status-paid"><i class="fas fa-flag-checkered"></i> 已结束</span>',
         'PAID': '<span class="status status-paid"><i class="fas fa-check-circle"></i> 已支付</span>',
         'CANCELLED': '<span class="status status-closed"><i class="fas fa-times-circle"></i> 已取消</span>',
         'REFUNDED': '<span class="status" style="background:#f0f0f0;color:#999"><i class="fas fa-undo"></i> 已退款</span>',
@@ -144,8 +192,24 @@ function getOrderTypeName(type) {
     return map[type] ? '<span class="order-type-badge">' + map[type] + '</span>' : '';
 }
 
+function isHotelOrder(order) { return order.orderType === 'HOTEL'; }
+function fmtDay(d) { return d ? String(d).substring(0, 10) : '-'; }
+
 function getOrderActions(order) {
     let html = '';
+    // 酒店订单：待确认可免费改期/取消；已确认可改期（重算房价）/入住日前取消；各阶段都可查看流转记录
+    if (isHotelOrder(order)) {
+        if (order.status === 'PENDING_CONFIRM') {
+            html += '<button class="btn btn-outline btn-sm" onclick="cancelOrder(\'' + order.id + '\')"><i class="fas fa-times"></i> 取消订单</button>';
+            html += '<button class="btn btn-primary btn-sm" onclick="openRescheduleModal(\'' + order.id + '\')"><i class="fas fa-calendar-alt"></i> 免费改期</button>';
+        } else if (order.status === 'CONFIRMED') {
+            html += '<button class="btn btn-outline btn-sm" onclick="cancelOrder(\'' + order.id + '\')"><i class="fas fa-times"></i> 取消订单</button>';
+            html += '<button class="btn btn-primary btn-sm" onclick="openRescheduleModal(\'' + order.id + '\')"><i class="fas fa-calendar-alt"></i> 申请改期</button>';
+        }
+        html += '<button class="btn btn-outline btn-sm" onclick="openLogModal(\'' + order.id + '\')"><i class="fas fa-history"></i> 状态记录</button>';
+        return html;
+    }
+    // 普通订单沿用原流程
     if (order.status === 'PENDING') {
         html += '<button class="btn btn-outline btn-sm" onclick="cancelOrder(\'' + order.id + '\')"><i class="fas fa-times"></i> 取消</button>';
         html += '<button class="btn btn-primary btn-sm" onclick="openPayModal(\'' + order.id + '\')"><i class="fas fa-credit-card"></i> 立即支付</button>';
@@ -155,11 +219,13 @@ function getOrderActions(order) {
     return html;
 }
 
+const STATUS_TABS = ['', 'PENDING', 'PENDING_CONFIRM', 'CONFIRMED', 'CHECKED_IN', 'FINISHED', 'PAID', 'CANCELLED', 'REFUNDED'];
+
 function switchStatus(status) {
     currentStatus = status;
     document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+    const idx = STATUS_TABS.indexOf(status);
     const tabs = document.querySelectorAll('.tabs .tab');
-    const idx = ['', 'PENDING', 'PAID', 'CANCELLED', 'REFUNDED'].indexOf(status);
     if (idx >= 0 && tabs[idx]) tabs[idx].classList.add('active');
     loadOrders(1);
 }
@@ -180,10 +246,17 @@ async function loadOrders(page) {
             '</div>' +
             '<div class="order-card-body">' +
                 '<div class="order-target-name">' + getOrderTypeName(o.orderType) + (o.targetName || '订单') + '</div>' +
+                (isHotelOrder(o) ?
+                    '<div class="order-meta-row">' +
+                        '<div class="order-meta-item"><i class="fas fa-sign-in-alt"></i> <span>入住：</span><strong>' + fmtDay(o.checkInDate) + '</strong></div>' +
+                        '<div class="order-meta-item"><i class="fas fa-sign-out-alt"></i> <span>离店：</span><strong>' + fmtDay(o.checkOutDate) + '</strong></div>' +
+                        '<div class="order-meta-item"><i class="fas fa-bed"></i> <span>房间数：' + (o.quantity || 1) + '</span></div>' +
+                        (o.rescheduleCount ? '<div class="order-meta-item" style="color:#faad14"><i class="fas fa-calendar-alt"></i> 已改期 ' + o.rescheduleCount + ' 次</div>' : '') +
+                    '</div>' : '') +
                 '<div class="order-meta-row">' +
                     '<div class="order-meta-item"><i class="fas fa-yen-sign"></i> <span>金额：</span><span class="order-amount">¥' + (o.amount || 0) + '</span></div>' +
-                    '<div class="order-meta-item"><i class="fas fa-layer-group"></i> <span>数量：' + (o.quantity || 1) + '</span></div>' +
-                    '<div class="order-meta-item"><i class="fas fa-calendar-alt"></i> <span>' + formatDate(o.createTime || o.createdAt) + '</span></div>' +
+                    (!isHotelOrder(o) ? '<div class="order-meta-item"><i class="fas fa-layer-group"></i> <span>数量：' + (o.quantity || 1) + '</span></div>' : '') +
+                    '<div class="order-meta-item"><i class="fas fa-calendar-alt"></i> <span>下单：' + formatDate(o.createTime || o.createdAt) + '</span></div>' +
                 '</div>' +
             '</div>' +
             (getOrderActions(o) ? '<div class="order-card-footer">' + getOrderActions(o) + '</div>' : '') +
@@ -228,8 +301,116 @@ function refundOrder(id) {
     });
 }
 
+/* ========== 酒店改期 ========== */
+let rescheduleInfo = null;
+
+async function openRescheduleModal(id) {
+    const info = await api('/api/order/rescheduleInfo?orderId=' + id);
+    if (!info) return;
+    if (!info.canReschedule) {
+        showToast(info.reason || '当前订单不可改期', 'warn');
+        return;
+    }
+    rescheduleInfo = info;
+    document.getElementById('oldCheckIn').value = fmtDay(info.checkInDate);
+    document.getElementById('oldCheckOut').value = fmtDay(info.checkOutDate);
+    const todayStr = info.today;
+    document.getElementById('newCheckIn').min = todayStr;
+    document.getElementById('newCheckOut').min = todayStr;
+    document.getElementById('newCheckIn').value = fmtDay(info.checkInDate);
+    document.getElementById('newCheckOut').value = fmtDay(info.checkOutDate);
+    document.getElementById('rescheduleTip').innerHTML = info.freeReschedule
+        ? '<i class="fas fa-info-circle"></i> 订单处于<strong>待确认</strong>阶段，本次改期<strong>免费</strong>，房价不重算。'
+        : '<i class="fas fa-info-circle"></i> 订单已确认，改期将<strong>按新的间夜重算房价</strong>（¥' + info.unitPrice + '/晚）。跨过入住日之后不可再改期，入住日当天仅接受最早一次改期。';
+    document.getElementById('rescheduleCost').textContent = '¥0';
+    document.getElementById('rescheduleCostHint').textContent = '';
+    calcRescheduleCost();
+    document.getElementById('rescheduleModal').classList.add('show');
+}
+
+function closeRescheduleModal() { document.getElementById('rescheduleModal').classList.remove('show'); rescheduleInfo = null; }
+
+function nightsOf(cin, cout) {
+    if (!cin || !cout) return 0;
+    return Math.max(0, Math.round((new Date(cout) - new Date(cin)) / 86400000));
+}
+
+function calcRescheduleCost() {
+    if (!rescheduleInfo) return;
+    const cin = document.getElementById('newCheckIn').value;
+    const cout = document.getElementById('newCheckOut').value;
+    const nights = nightsOf(cin, cout);
+    const qty = rescheduleInfo.quantity || 1;
+    const hint = document.getElementById('rescheduleCostHint');
+    if (!cin || !cout) { document.getElementById('rescheduleCost').textContent = '¥0'; hint.textContent = ''; return; }
+    if (nights < 1) { document.getElementById('rescheduleCost').textContent = '日期不合法'; hint.textContent = '离店日期必须晚于入住日期'; return; }
+    if (rescheduleInfo.freeReschedule) {
+        // 待确认免费改期：预估按原间夜单价折算，最终以服务端判定为准
+        const oldNights = nightsOf(fmtDay(rescheduleInfo.checkInDate), fmtDay(rescheduleInfo.checkOutDate)) || 1;
+        const unit = (+rescheduleInfo.currentAmount || 0) / (oldNights * qty);
+        const est = unit * nights * qty;
+        document.getElementById('rescheduleCost').textContent = '¥' + est.toFixed(2);
+        hint.innerHTML = '免费改期 · ' + nights + ' 间夜 × ' + qty + ' 间（最终金额由服务端核定）';
+    } else {
+        const est = (+rescheduleInfo.unitPrice || 0) * nights * qty;
+        document.getElementById('rescheduleCost').textContent = '¥' + est.toFixed(2);
+        hint.innerHTML = '¥' + rescheduleInfo.unitPrice + '/晚 × ' + nights + ' 间夜 × ' + qty + ' 间';
+    }
+}
+document.getElementById('newCheckIn').addEventListener('change', calcRescheduleCost);
+document.getElementById('newCheckOut').addEventListener('change', calcRescheduleCost);
+
+async function confirmReschedule() {
+    if (!rescheduleInfo) return;
+    const cin = document.getElementById('newCheckIn').value;
+    const cout = document.getElementById('newCheckOut').value;
+    if (!cin || !cout || nightsOf(cin, cout) < 1) { showToast('请选择合法的入住/离店日期', 'warn'); return; }
+    const data = await api('/api/order/reschedule?orderId=' + rescheduleInfo.orderId
+        + '&newCheckInDate=' + cin + '&newCheckOutDate=' + cout);
+    if (data !== null) {
+        closeRescheduleModal();
+        showToast('改期成功，最新金额 ¥' + data.amount);
+        loadOrders(currentPage);
+    }
+}
+
+/* ========== 状态流转记录 ========== */
+const LOG_STATUS_TEXT = {
+    PENDING: '待支付', PAID: '已支付', COMPLETED: '已完成', CANCELLED: '已取消', REFUNDED: '已退款',
+    PENDING_CONFIRM: '待确认', CONFIRMED: '已确认', CHECKED_IN: '入住中', FINISHED: '已结束'
+};
+const LOG_TRIGGER_TEXT = { USER: '用户', ADMIN: '后台', SYSTEM: '系统' };
+
+async function openLogModal(id) {
+    const logs = await api('/api/order/statusLogs?orderId=' + id);
+    if (!logs) return;
+    const el = document.getElementById('logTimeline');
+    if (!logs.length) { el.innerHTML = '<div class="empty"><p>暂无流转记录</p></div>'; document.getElementById('logModal').classList.add('show'); return; }
+    el.innerHTML = logs.map((l, i) => {
+        const fromTxt = l.fromStatus ? (LOG_STATUS_TEXT[l.fromStatus] || l.fromStatus) : '（下单）';
+        const toTxt = LOG_STATUS_TEXT[l.toStatus] || l.toStatus;
+        const sameStatus = l.fromStatus === l.toStatus;
+        const trig = LOG_TRIGGER_TEXT[l.triggerType] || l.triggerType;
+        const trigIcon = { USER: 'fa-user', ADMIN: 'fa-user-shield', SYSTEM: 'fa-robot' }[l.triggerType] || 'fa-circle';
+        return '<div style="position:relative;padding:0 0 18px 26px;border-left:2px solid ' + (i === logs.length - 1 ? 'transparent' : '#eee') + '">' +
+            '<div style="position:absolute;left:-8px;top:0;width:14px;height:14px;border-radius:50%;background:' + (i === logs.length - 1 ? 'var(--red)' : '#bbb') + '"></div>' +
+            '<div style="font-weight:600;margin-bottom:3px">' +
+                (sameStatus ? '<i class="fas fa-calendar-alt" style="color:#faad14"></i> 改期（状态保持：' + toTxt + '）' : fromTxt + ' <i class="fas fa-arrow-right" style="font-size:11px"></i> ' + toTxt) +
+            '</div>' +
+            '<div style="font-size:13px;color:var(--text2)"><i class="fas fa-clock"></i> ' + formatDate(l.createTime)
+                + ' &nbsp; <i class="fas ' + trigIcon + '"></i> 触发人：' + trig + (l.triggerName ? '（' + l.triggerName + '）' : '') + '</div>' +
+            (l.remark ? '<div style="font-size:13px;color:var(--text2);margin-top:3px;background:#fafafa;border-radius:6px;padding:6px 9px">' + l.remark + '</div>' : '') +
+        '</div>';
+    }).join('');
+    document.getElementById('logModal').classList.add('show');
+}
+function closeLogModal() { document.getElementById('logModal').classList.remove('show'); }
+
 renderSidebar();
-loadOrders(1);
+// 支持从酒店详情页下单后按状态跳转（?status=PENDING_CONFIRM）
+const initialStatus = getParam('status') || '';
+if (initialStatus && STATUS_TABS.includes(initialStatus)) switchStatus(initialStatus);
+else loadOrders(1);
 </script>
 </body>
 </html>

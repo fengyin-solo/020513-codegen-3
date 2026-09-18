@@ -210,10 +210,33 @@ CREATE TABLE IF NOT EXISTS order_info (
     quantity INT DEFAULT 1,
     check_in_date DATE,
     check_out_date DATE,
+    -- 酒店订单状态流转：待确认 PENDING_CONFIRM -> 已确认 CONFIRMED -> 入住中 CHECKED_IN -> 已结束 FINISHED / 已取消 CANCELLED
+    confirmed_time DATETIME COMMENT '酒店确认时间',
+    checked_in_time DATETIME COMMENT '实际入住时间',
+    finished_time DATETIME COMMENT '离店/结束时间',
+    cancelled_time DATETIME COMMENT '取消时间',
+    reschedule_count INT NOT NULL DEFAULT 0 COMMENT '累计改期次数',
+    last_reschedule_date DATE COMMENT '最近一次改期操作发生的自然日（入住日并发只接受最早一次）',
+    checkin_day_reschedule_date DATE COMMENT '在原入住日当天发生过改期的自然日（当天后续改期一律拒绝）',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user (user_id),
-    INDEX idx_order_no (order_no)
+    INDEX idx_order_no (order_no),
+    INDEX idx_hotel_status (order_type, status, check_in_date, check_out_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 订单状态流转记录：每一次状态变更都保留变更时间并注明触发人
+CREATE TABLE IF NOT EXISTS order_status_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT NOT NULL,
+    from_status VARCHAR(20) COMMENT '变更前状态（下单为 NULL）',
+    to_status VARCHAR(20) NOT NULL COMMENT '变更后状态',
+    trigger_type VARCHAR(20) NOT NULL COMMENT '触发类型：USER 用户 / ADMIN 后台 / SYSTEM 系统（定时任务）',
+    trigger_id BIGINT COMMENT '触发人用户ID（系统触发为空）',
+    trigger_name VARCHAR(100) COMMENT '触发人名称（用户名或“系统”）',
+    remark VARCHAR(500) COMMENT '备注（如改期日期、重算房价、拒绝原因）',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_order (order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS message (

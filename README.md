@@ -50,7 +50,7 @@ docker compose up --build -d
 | 美食列表/详情 `foods.html` / `food-detail.html` | 美食分类、门店信息（位置/卫生/品类）、购买、模拟支付 |
 | 登录/注册/找回密码 | 账号密码登录（记住我）、手机号注册、旧密码验证找回 |
 | 个人中心 `profile.html` | 修改昵称/手机号/头像、修改密码 |
-| 我的订单 `orders.html` | 订单列表（按状态筛选）、立即支付、取消、申请退款 |
+| 我的订单 `orders.html` | 订单列表（按状态筛选）、立即支付、取消、申请退款；**酒店订单完整状态流转**（待确认/已确认/入住中/已结束）、**免费改期/按新间夜重算房价改期**、状态流转时间线（变更时间+触发人） |
 | 我的收藏 `favorites.html` | 景点/线路/文化/酒店收藏管理 |
 | 消息通知 `messages.html` | 系统消息列表（审核结果/评论回复/反馈回复自动推送） |
 | 我的线路 `my-routes.html` | 创建/编辑/删除自定义线路，拖拽添加景点，提交申请官方推荐，查看审核状态与驳回原因 |
@@ -70,7 +70,8 @@ docker compose up --build -d
 | 酒店管理 `hotels.html` | 酒店 CRUD、早餐/客房服务配置 |
 | 美食管理 `foods.html` | 美食 CRUD、门店 CRUD |
 | 留言管理 `comments.html` | 查看所有评论、回复留言（自动发送通知）、删除违规评论 |
-| 订单管理 `orders.html` | 订单列表（类型/状态筛选）、完成/取消/退款/删除，显示具体支付方式 |
+| 订单管理 `orders.html` | 订单列表（类型/状态筛选）、完成/取消/退款/删除，显示具体支付方式，**酒店订单确认（待确认→已确认）**、入住/离店日期与改期次数展示 |
+| 订单详情 `order-detail.html` | **后台订单详情页**：订单全字段、各状态变更时间点、**状态流转记录时间线（每步变更时间+触发人）**、确认/取消/退款/完成等操作入口 |
 | FAQ 管理 `faqs.html` | 常见问题 CRUD（供智能客服匹配使用） |
 | 问题反馈 `feedbacks.html` | 查看用户反馈、回复（自动消息通知）、状态流转（待处理→处理中→已解决）、删除 |
 | 线路审核 `route-review.html` | 审核用户申请推荐的自定义线路，通过后纳入官方推荐，驳回填写原因，操作自动通知用户 |
@@ -125,11 +126,15 @@ docker compose up --build -d
 ### 用户交互
 | 端点 | 说明 |
 |------|------|
-| `GET /api/order/create?orderType=&targetId=&targetName=&amount=&quantity=` | 创建订单 |
-| `GET /api/order/pay?orderId=&payMethod=` | 模拟支付（payMethod: WECHAT/BANK_ICBC/BANK_CCB/BANK_ABC/BANK_BOC/BANK_BOCOM/BANK_CMB/BANK_PSBC） |
-| `GET /api/order/cancel?orderId=` | 取消订单 |
-| `GET /api/order/refund?orderId=` | 申请退款 |
-| `GET /api/order/myList?page=&size=` | 我的订单列表 |
+| `GET /api/order/create?orderType=&targetId=&targetName=&amount=&quantity=&checkInDate=&checkOutDate=` | 创建订单（酒店订单必须传入住/离店日期，提交后为待确认） |
+| `GET /api/order/pay?orderId=&payMethod=` | 模拟支付（payMethod: WECHAT/BANK_ICBC/BANK_CCB/BANK_ABC/BANK_BOC/BANK_BOCOM/BANK_CMB/BANK_PSBC；仅普通订单） |
+| `GET /api/order/cancel?orderId=` | 取消订单（酒店订单待确认可直接取消、已确认仅入住日前可取消） |
+| `GET /api/order/reschedule?orderId=&newCheckInDate=&newCheckOutDate=` | 酒店订单改期（可改范围服务端判定；待确认免费、已确认按新间夜重算房价；入住日并发只接受最早一次） |
+| `GET /api/order/rescheduleInfo?orderId=` | 查询改期资格（canReschedule/reason/unitPrice/estimatedAmount 等） |
+| `GET /api/order/statusLogs?orderId=` | 查询订单状态流转记录（变更时间、触发人、备注） |
+| `GET /api/order/refund?orderId=` | 申请退款（普通订单） |
+| `GET /api/order/myList?page=&size=&orderType=&status=` | 我的订单列表（status 支持逗号分隔多状态；查询前自动推进到期酒店订单） |
+| `GET /api/order/detail?id=` | 我的订单详情（打开时惰性推进入住中/已结束） |
 | `GET /api/favorite/add?targetType=&targetId=` | 收藏/取消收藏 |
 | `GET /api/favorite/list?targetType=` | 收藏列表 |
 | `GET /api/like/add?targetType=&targetId=` | 点赞/取消点赞 |
@@ -182,7 +187,7 @@ docker compose up --build -d
 | `GET /api/admin/hotel/*` | 酒店 CRUD |
 | `GET /api/admin/food/*` | 美食 CRUD |
 | `GET /api/admin/comment/*` | 留言管理（list/reply/delete） |
-| `GET /api/admin/order/*` | 订单管理（list/complete/cancel/refund/delete） |
+| `GET /api/admin/order/*` | 订单管理（list/detail/statusLogs/confirm/cancel/refund/complete/delete） |
 | `GET /api/admin/faq/*` | FAQ CRUD |
 | `GET /api/admin/feedback/*` | 反馈管理（list/reply/status/delete） |
 | `GET /api/admin/customRoute/list?status=` | 用户提交的线路审核列表 |
@@ -248,12 +253,12 @@ label-02051/
 │   ├── src/main/java/com/redtourism/
 │   │   ├── config/                   # Security / CORS / MybatisPlus / WebMvc 配置
 │   │   ├── common/                   # Result 统一响应、全局异常处理、常量
-│   │   ├── entity/                   # 22 个实体类
+│   │   ├── entity/                   # 23 个实体类
 │   │   ├── mapper/                   # 22 个 MyBatis-Plus Mapper
 │   │   ├── service/                  # 11 个业务接口 + 实现
 │   │   └── controller/               # 20 个 REST Controller（~1900 行）
 │   ├── src/main/resources/
-│   │   ├── schema.sql                # 建表脚本（22 张表）
+│   │   ├── schema.sql                # 建表脚本（23 张表）
 │   │   ├── data.sql                  # 初始化数据（景点/线路/文化/酒店/美食/FAQ等）
 │   │   └── application.yml           # 应用配置（session 30min、文件上传 10MB）
 │   ├── uploads/                      # 图片资源（49 张，含景点/线路/酒店/美食封面）
@@ -278,7 +283,7 @@ label-02051/
     └── SelfTestReport.md
 ```
 
-### 数据库表清单（22 张）
+### 数据库表清单（23 张）
 
 | 表名 | 说明 | 初始数据 |
 |------|------|---------|
@@ -297,7 +302,8 @@ label-02051/
 | `comment` | 用户评论/留言 | 若干 |
 | `favorite` | 收藏记录 | — |
 | `like_record` | 点赞记录 | — |
-| `order_info` | 订单信息 | — |
+| `order_info` | 订单信息（含酒店确认/入住/离店/取消时间、改期次数） | — |
+| `order_status_log` | 订单状态流转记录（变更时间/触发人/备注） | — |
 | `message` | 系统消息通知 | — |
 | `faq` | 常见问题 | 8 条 |
 | `feedback` | 用户问题反馈 | 若干 |
@@ -307,9 +313,36 @@ label-02051/
 
 ---
 
-## 8. 支付说明（Mock 模式）
+## 8. 酒店订单状态流转说明
 
-支付为完整模拟流程，调用 `/api/order/pay` 即立即标记为已支付，无需真实扣款。
+酒店订单（`order_type=HOTEL`）采用与普通订单不同的完整预订状态机，所有状态变更均由服务端统一判定，并写入 `order_status_log`（变更时间 + 触发人 + 备注）。
+
+```
+提交订单 ──▶ PENDING_CONFIRM 待确认
+                  │ 后台“确认”（ADMIN）
+                  ▼
+             CONFIRMED 已确认
+                  │ 入住日当天（定时任务每10分钟扫描 + 列表/详情惰性推进，SYSTEM）
+                  ▼
+             CHECKED_IN 入住中
+                  │ 到达离店日（同上，SYSTEM）
+                  ▼
+              FINISHED 已结束（结束记录留存）
+
+  PENDING_CONFIRM / CONFIRMED（入住日之前）── 取消 ──▶ CANCELLED 已取消
+```
+
+**关键规则**
+
+- **改期**：仅酒店订单、仅待确认/已确认且未跨过入住日可改。待确认阶段免费（沿用原间夜单价折算）；已确认阶段按新的间夜 × 酒店当前房价 × 房间数重算金额。新入住日不得早于今天、离店必须晚于入住，可改范围全部在服务端判定（`/api/order/rescheduleInfo` 预判、`/api/order/reschedule` 执行）。
+- **入住日并发改期**：改期方法在事务内对订单行执行 `SELECT ... FOR UPDATE`，并以 `last_reschedule_date` 记录当天是否已改过；入住日当天只接受最早一次，并发的后续请求直接拒绝。
+- **自动推进**：`OrderStatusScheduleTask` 每 10 分钟按 Asia/Shanghai 日期扫描 CONFIRMED/CHECKED_IN 订单；用户/后台打开列表或详情时也会惰性推进，双保险。
+- **状态留痕**：提交、确认、入住、离店、取消以及每次改期都在 `order_status_log` 留存一条记录，触发人分为 USER（用户本人）/ADMIN（后台操作人）/SYSTEM（系统定时任务），用户端“状态记录”弹窗与后台订单详情页均可查看。
+- 普通订单（景点/线路/美食）仍沿用 待支付 PENDING → 已支付 PAID → 已完成 COMPLETED 流程，取消/退款规则不变。
+
+## 9. 支付说明（Mock 模式）
+
+支付为完整模拟流程，调用 `/api/order/pay` 即立即标记为已支付，无需真实扣款。酒店预订不经过支付环节，提交后直接等待酒店确认。
 
 支持以下支付方式（前端均有对应选项）：
 
@@ -328,7 +361,7 @@ label-02051/
 
 ---
 
-## 9. 注意事项
+## 10. 注意事项
 
 1. **Docker 构建**：使用多阶段 `Dockerfile`，容器内自动执行 Maven 构建，无需本地预装 Java/Maven 环境，真正一键启动。首次构建因需下载 Maven 依赖耗时约 3-5 分钟，后续有层缓存构建会快很多。
 2. **数据持久化**：MySQL 数据通过 Docker named volume `mysql-data` 持久化，`docker compose down` 不会丢失数据；`docker compose down -v` 会清除数据并在下次启动时重新初始化。

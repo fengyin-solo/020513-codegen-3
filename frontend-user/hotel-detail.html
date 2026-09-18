@@ -94,57 +94,7 @@
     </div>
 </div>
 
-<div class="modal-overlay" id="payModal">
-    <div class="modal" style="position:relative">
-        <span class="modal-close" onclick="closePayModal()">&times;</span>
-        <h3 style="margin-bottom:16px">确认支付</h3>
-        <div style="text-align:center;margin:20px 0">
-            <div style="font-size:32px;color:var(--red);font-weight:700" id="payAmount">¥0</div>
-            <div style="color:var(--text2);margin-top:4px">订单金额</div>
-        </div>
-        <div style="margin:24px 0">
-            <div style="display:flex;gap:12px;margin-bottom:12px">
-                <label class="pay-opt" style="flex:1;display:flex;align-items:center;gap:8px;padding:14px;border:2px solid var(--red);border-radius:var(--r);cursor:pointer;background:#fff5f5" onclick="selectPayMethod('WECHAT')">
-                    <input type="radio" name="payMethod" value="WECHAT" checked>
-                    <i class="fab fa-weixin" style="font-size:22px;color:#07c160"></i> 微信支付
-                </label>
-            </div>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:8px">银行卡支付：</p>
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
-                <label class="pay-opt" style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px" onclick="selectPayMethod('BANK_ICBC')">
-                    <input type="radio" name="payMethod" value="BANK_ICBC">
-                    <i class="fas fa-university" style="color:#C41A1A"></i> 工商银行
-                </label>
-                <label class="pay-opt" style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px" onclick="selectPayMethod('BANK_CCB')">
-                    <input type="radio" name="payMethod" value="BANK_CCB">
-                    <i class="fas fa-university" style="color:#003DA5"></i> 建设银行
-                </label>
-                <label class="pay-opt" style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px" onclick="selectPayMethod('BANK_ABC')">
-                    <input type="radio" name="payMethod" value="BANK_ABC">
-                    <i class="fas fa-university" style="color:#009944"></i> 农业银行
-                </label>
-                <label class="pay-opt" style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px" onclick="selectPayMethod('BANK_BOC')">
-                    <input type="radio" name="payMethod" value="BANK_BOC">
-                    <i class="fas fa-university" style="color:#C41A1A"></i> 中国银行
-                </label>
-                <label class="pay-opt" style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px" onclick="selectPayMethod('BANK_BOCOM')">
-                    <input type="radio" name="payMethod" value="BANK_BOCOM">
-                    <i class="fas fa-university" style="color:#003976"></i> 交通银行
-                </label>
-                <label class="pay-opt" style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px" onclick="selectPayMethod('BANK_CMB')">
-                    <input type="radio" name="payMethod" value="BANK_CMB">
-                    <i class="fas fa-university" style="color:#E60012"></i> 招商银行
-                </label>
-                <label class="pay-opt" style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:2px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px" onclick="selectPayMethod('BANK_PSBC')">
-                    <input type="radio" name="payMethod" value="BANK_PSBC">
-                    <i class="fas fa-university" style="color:#007236"></i> 邮储银行
-                </label>
-            </div>
-        </div>
-        <button class="btn btn-primary" style="width:100%" onclick="confirmPay()">确认支付（模拟）</button>
-        <div style="text-align:center;margin-top:12px"><a href="orders.html" style="color:var(--text2);font-size:13px">稍后支付 →</a></div>
-    </div>
-</div>
+<div class="modal-overlay" id="payModal" hidden></div>
 
 <footer class="footer"><div class="container"><p>© 2026 贵州红色文化旅游景点信息管理系统</p></div></footer>
 
@@ -222,30 +172,19 @@ document.getElementById('bookQty').addEventListener('input', calcCost);
 
 async function confirmBook() {
     if (!getUser()) { showToast('请先登录', 'error'); setTimeout(() => location.href = 'login.html', 1000); return; }
+    const cin = document.getElementById('checkIn').value;
+    const cout = document.getElementById('checkOut').value;
+    if (!cin || !cout) { showToast('请选择入住和退房日期', 'warn'); return; }
+    if (new Date(cout) <= new Date(cin)) { showToast('退房日期必须晚于入住日期', 'warn'); return; }
     const amount = calcCost();
     const qty = parseInt(document.getElementById('bookQty').value) || 1;
-    const data = await api('/api/order/create?orderType=HOTEL&targetId=' + hotelId + '&targetName=' + encodeURIComponent(hotel.name) + '&amount=' + amount + '&quantity=' + qty);
+    const data = await api('/api/order/create?orderType=HOTEL&targetId=' + hotelId
+        + '&targetName=' + encodeURIComponent(hotel.name) + '&amount=' + amount + '&quantity=' + qty
+        + '&checkInDate=' + cin + '&checkOutDate=' + cout);
     if (data !== null) {
         closeBookModal();
-        lastOrderId = data.id || data;
-        lastOrderAmount = amount;
-        document.getElementById('payAmount').textContent = '¥' + amount;
-        document.getElementById('payModal').classList.add('show');
-    }
-}
-
-let lastOrderId = null, lastOrderAmount = 0, payMethod = 'WECHAT';
-function selectPayMethod(m) { payMethod = m; document.querySelectorAll('.pay-opt').forEach(l => { var c = l.querySelector('input').value === m; l.style.borderColor = c ? 'var(--red)' : 'var(--border)'; l.style.background = c ? '#fff5f5' : ''; }); }
-function closePayModal() { document.getElementById('payModal').classList.remove('show'); }
-
-async function confirmPay() {
-    if (!lastOrderId) return;
-    const data = await api('/api/order/pay?orderId=' + lastOrderId + '&payMethod=' + payMethod);
-    if (data !== null) {
-        lastOrderId = null;
-        closePayModal();
-        showToast('支付成功！预订完成');
-        setTimeout(() => location.href = 'orders.html', 1200);
+        showToast('预订已提交，状态为待确认，请等待酒店确认');
+        setTimeout(() => location.href = 'orders.html?status=PENDING_CONFIRM', 1500);
     }
 }
 

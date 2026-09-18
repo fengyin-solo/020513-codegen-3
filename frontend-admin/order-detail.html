@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 - 订单详情</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/admin.css">
+    <style>
+        .detail-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px 32px; margin-top:16px; }
+        .detail-item label { display:block; font-size:12px; color:#888; margin-bottom:4px; }
+        .detail-item .val { font-size:15px; font-weight:600; }
+        .timeline-item { position:relative; padding:0 0 18px 26px; border-left:2px solid #eee; }
+        .timeline-item:last-child { border-left-color:transparent; }
+        .timeline-dot { position:absolute; left:-8px; top:2px; width:14px; height:14px; border-radius:50%; background:#bbb; }
+        .timeline-dot.cur { background:#C41A1A; }
+        .timeline-title { font-weight:600; margin-bottom:3px; }
+        .timeline-meta { font-size:13px; color:#888; }
+        .timeline-remark { font-size:13px; color:#555; margin-top:4px; background:#fafafa; border-radius:6px; padding:7px 10px; }
+    </style>
+</head>
+<body>
+<div class="admin-layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header"><i class="fas fa-flag"></i> 管理后台</div>
+        <nav class="sidebar-nav">
+            <a href="index.html"><i class="fas fa-tachometer-alt"></i> 仪表盘</a>
+            <a href="users.html"><i class="fas fa-users"></i> 用户管理</a>
+            <a href="spots.html"><i class="fas fa-map-marker-alt"></i> 景点管理</a>
+            <a href="routes.html"><i class="fas fa-route"></i> 线路管理</a>
+            <a href="culture.html"><i class="fas fa-book"></i> 文化管理</a>
+            <a href="hotels.html"><i class="fas fa-hotel"></i> 酒店管理</a>
+            <a href="foods.html"><i class="fas fa-utensils"></i> 美食管理</a>
+            <a href="comments.html"><i class="fas fa-comments"></i> 留言管理</a>
+            <a href="orders.html"><i class="fas fa-shopping-cart"></i> 订单管理</a>
+            <a href="faqs.html"><i class="fas fa-question-circle"></i> FAQ管理</a>
+            <div style="border-top:1px solid rgba(255,255,255,.12);margin:8px 12px"></div>
+            <a href="feedbacks.html"><i class="fas fa-bullhorn"></i> 问题反馈</a>
+            <a href="route-review.html"><i class="fas fa-clipboard-check"></i> 线路审核</a>
+            <a href="spot-review.html"><i class="fas fa-search-plus"></i> 景点审核</a>
+            <a href="permissions.html"><i class="fas fa-shield-alt"></i> 权限配置</a>
+            <a href="customer-service.html"><i class="fas fa-headset"></i> 人工客服</a>
+        </nav>
+    </aside>
+    <div class="main-content">
+        <header class="top-bar">
+            <button class="menu-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+            <h1>订单详情</h1>
+            <div class="top-bar-right">
+                <a href="orders.html" style="margin-right:14px"><i class="fas fa-arrow-left"></i> 返回订单列表</a>
+                <span id="adminName"></span> <a href="#" onclick="doLogout()">退出</a>
+            </div>
+        </header>
+        <div class="content">
+            <div class="card">
+                <div id="detailBody"><div class="loading"><i class="fas fa-spinner fa-spin"></i> 加载中...</div></div>
+                <div id="actionBar" style="margin-top:18px;padding-top:16px;border-top:1px solid #f0f0f0;display:flex;gap:10px;flex-wrap:wrap"></div>
+            </div>
+            <div class="card" style="margin-top:18px">
+                <h3 style="margin-bottom:6px"><i class="fas fa-history"></i> 状态流转记录</h3>
+                <p style="font-size:13px;color:#888;margin-bottom:14px">每一步状态变更的时间与触发人（用户 / 后台 / 系统）</p>
+                <div id="logTimeline"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/admin-common.js"></script>
+<script>
+if (!requireAdmin()) throw '';
+renderSidebar();
+
+const orderId = getParam('id');
+const statusMap = {
+    'PENDING': { text: '待支付', cls: 'badge-warning' },
+    'PENDING_CONFIRM': { text: '待确认', cls: 'badge-warning' },
+    'CONFIRMED': { text: '已确认', cls: 'badge-info' },
+    'CHECKED_IN': { text: '入住中', cls: 'badge-info' },
+    'FINISHED': { text: '已结束', cls: 'badge-success' },
+    'PAID': { text: '已支付', cls: 'badge-info' },
+    'COMPLETED': { text: '已完成', cls: 'badge-success' },
+    'CANCELLED': { text: '已取消', cls: 'badge-default' },
+    'REFUNDED': { text: '已退款', cls: 'badge-danger' }
+};
+const typeMap = { 'SPOT': '景点', 'ROUTE': '线路', 'HOTEL': '酒店', 'FOOD': '美食' };
+const LOG_STATUS_TEXT = {
+    PENDING: '待支付', PAID: '已支付', COMPLETED: '已完成', CANCELLED: '已取消', REFUNDED: '已退款',
+    PENDING_CONFIRM: '待确认', CONFIRMED: '已确认', CHECKED_IN: '入住中', FINISHED: '已结束'
+};
+const LOG_TRIGGER_TEXT = { USER: '用户', ADMIN: '后台', SYSTEM: '系统' };
+
+function fmtDay(d) { return d ? String(d).substring(0, 10) : '-'; }
+function item(label, val) { return `<div class="detail-item"><label>${label}</label><div class="val">${val == null || val === '' ? '-' : val}</div></div>`; }
+
+async function loadDetail() {
+    const o = await api('/api/admin/order/detail?id=' + orderId);
+    if (!o) { document.getElementById('detailBody').innerHTML = '<div class="empty-state">订单不存在或加载失败</div>'; return; }
+    window.__order = o;
+    const st = statusMap[o.status] || { text: o.status, cls: 'badge-default' };
+    let html = `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h2 style="margin:0;font-size:20px">${escHtml(o.orderNo || ('#' + o.id))}</h2>
+        <span class="badge ${st.cls}" style="font-size:14px;padding:4px 12px">${st.text}</span>
+        <span class="badge badge-info">${typeMap[o.orderType] || o.orderType}</span>
+    </div><div class="detail-grid">
+        ${item('预订目标', escHtml(o.targetName || '-'))}
+        ${item('下单用户', '#' + o.userId)}
+        ${item('订单金额', '<span style="color:#C41A1A">¥' + (o.amount != null ? o.amount : '-') + '</span>')}
+        ${item('数量（房间数）', o.quantity || 1)}`;
+    if (o.orderType === 'HOTEL') {
+        html += item('入住日期', '<i class="fas fa-sign-in-alt"></i> ' + fmtDay(o.checkInDate));
+        html += item('离店日期', '<i class="fas fa-sign-out-alt"></i> ' + fmtDay(o.checkOutDate));
+        html += item('酒店确认时间', o.confirmedTime ? formatDate(o.confirmedTime) : '-');
+        html += item('实际入住时间', o.checkedInTime ? formatDate(o.checkedInTime) : '-');
+        html += item('离店结束时间', o.finishedTime ? formatDate(o.finishedTime) : '-');
+        html += item('取消时间', o.cancelledTime ? formatDate(o.cancelledTime) : '-');
+        html += item('累计改期次数', o.rescheduleCount || 0);
+    } else {
+        html += item('支付方式', payMethodName(o.payMethod));
+        html += item('支付时间', o.payTime ? formatDate(o.payTime) : '-');
+    }
+    html += item('下单时间', formatDate(o.createTime));
+    html += item('最近更新', formatDate(o.updateTime));
+    html += `</div>`;
+    document.getElementById('detailBody').innerHTML = html;
+
+    // 操作按钮：取消/改期/确认等状态变更与用户侧规则一致，均在服务端判定
+    const bar = document.getElementById('actionBar');
+    let btns = '';
+    if (o.orderType === 'HOTEL') {
+        if (o.status === 'PENDING_CONFIRM') btns += `<button class="btn btn-success" onclick="doAction('confirm','确定确认该酒店订单？')"><i class="fas fa-check"></i> 确认订单</button>`;
+        if (o.status === 'PENDING_CONFIRM' || o.status === 'CONFIRMED') btns += `<button class="btn btn-danger" onclick="doAction('cancel','确定取消该酒店订单？入住中/已结束的订单无法取消。')"><i class="fas fa-times"></i> 取消订单</button>`;
+        if (['PENDING_CONFIRM','CONFIRMED','CHECKED_IN','FINISHED'].includes(o.status)) {
+            btns += `<button class="btn btn-default" disabled title="改期由用户在游客端发起，服务端统一判定"><i class="fas fa-calendar-alt"></i> 改期记录见下方流转日志</button>`;
+        }
+    } else {
+        if (o.status === 'PENDING') btns += `<button class="btn btn-danger" onclick="doAction('cancel','确定取消该订单？')">取消订单</button>`;
+        if (o.status === 'PAID') {
+            btns += `<button class="btn btn-success" onclick="doAction('complete','确定标记为已完成？')">标记完成</button>`;
+            btns += `<button class="btn btn-warning" onclick="doAction('refund','确定为此订单退款？')">退款</button>`;
+        }
+    }
+    if (['CANCELLED','REFUNDED','COMPLETED','FINISHED'].includes(o.status)) {
+        btns += `<button class="btn btn-default" onclick="doDelete()"><i class="fas fa-trash"></i> 删除订单</button>`;
+    }
+    bar.innerHTML = btns;
+}
+
+async function doAction(type, msg) {
+    showConfirm(msg, async () => {
+        const d = await api('/api/admin/order/' + type + '?orderId=' + orderId);
+        if (d !== null) { showToast('操作成功'); loadDetail(); loadLogs(); }
+    });
+}
+function doDelete() {
+    showConfirm('确定删除此订单？此操作不可恢复。', async () => {
+        const d = await api('/api/admin/order/delete?orderId=' + orderId);
+        if (d !== null) { showToast('已删除'); setTimeout(() => location.href = 'orders.html', 800); }
+    });
+}
+function payMethodName(m) {
+    var map = {WECHAT:'微信支付',BANK_ICBC:'工商银行',BANK_CCB:'建设银行',BANK_ABC:'农业银行',BANK_BOC:'中国银行',BANK_BOCOM:'交通银行',BANK_CMB:'招商银行',BANK_PSBC:'邮储银行'};
+    return m ? (map[m] || m) : '-';
+}
+
+async function loadLogs() {
+    const logs = await api('/api/admin/order/statusLogs?orderId=' + orderId);
+    const el = document.getElementById('logTimeline');
+    if (!logs) { el.innerHTML = '<div class="empty-state">流转记录加载失败</div>'; return; }
+    if (!logs.length) { el.innerHTML = '<div class="empty-state">暂无流转记录</div>'; return; }
+    el.innerHTML = logs.map((l, i) => {
+        const fromTxt = l.fromStatus ? (LOG_STATUS_TEXT[l.fromStatus] || l.fromStatus) : '（下单）';
+        const toTxt = LOG_STATUS_TEXT[l.toStatus] || l.toStatus;
+        const sameStatus = l.fromStatus === l.toStatus;
+        const trig = LOG_TRIGGER_TEXT[l.triggerType] || l.triggerType;
+        const icon = { USER: 'fa-user', ADMIN: 'fa-user-shield', SYSTEM: 'fa-robot' }[l.triggerType] || 'fa-circle';
+        return `<div class="timeline-item">
+            <div class="timeline-dot ${i === logs.length - 1 ? 'cur' : ''}"></div>
+            <div class="timeline-title">${sameStatus
+                ? '<i class="fas fa-calendar-alt" style="color:#faad14"></i> 改期（状态保持：' + toTxt + '）'
+                : fromTxt + ' <i class="fas fa-arrow-right" style="font-size:11px"></i> ' + toTxt}</div>
+            <div class="timeline-meta"><i class="fas fa-clock"></i> ${formatDate(l.createTime)}
+                &nbsp; <i class="fas ${icon}"></i> 触发人：${trig}${l.triggerName ? '（' + escHtml(l.triggerName) + '）' : ''}</div>
+            ${l.remark ? `<div class="timeline-remark">${escHtml(l.remark)}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+loadDetail();
+loadLogs();
+</script>
+</body>
+</html>
